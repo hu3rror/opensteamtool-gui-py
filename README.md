@@ -9,6 +9,8 @@
 
 OpenSteamTool 管理工具，用于部署、卸载及在线更新 DLL 文件。
 
+<img width="562" height="502" alt="OpenSteamToolManager_202607271459122" src="https://github.com/user-attachments/assets/5310032e-d94c-45b9-a9cf-70be5c77a4b6" />
+
 ### 功能
 - 自动识别 Steam 安装路径
 - 一键部署 / 卸载 DLL 文件并启动 Steam
@@ -46,6 +48,8 @@ pyinstaller --noconfirm --onefile --noconsole --icon=app.ico --add-data "app.ico
 ## English
 
 A manager tool to deploy, uninstall, and update OpenSteamTool DLLs for Steam.
+
+<img width="562" height="502" alt="OpenSteamToolManager_202607271459051" src="https://github.com/user-attachments/assets/33623c8e-26b9-4ad8-ae90-64b454d34a02" />
 
 ### Features
 - Auto-detect Steam path via Windows Registry
