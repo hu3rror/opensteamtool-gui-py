@@ -25,7 +25,7 @@ def get_resource_path(relative_path: str) -> str:
 
 # ==================== 1. 全局配置与主题定义 ====================
 TARGET_DLLS = ["OpenSteamTool.dll", "dwmapi.dll", "xinput1_4.dll"]
-GITHUB_API_URL = "https://api.github.com/repos/OpenSteamTool/OpenSteamTool/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
 
 THEME = {
     "bg_app": "#f8f9fa",
