@@ -12,16 +12,47 @@ import urllib.error
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# 目标需要管理的 DLL 文件列表
+# ==================== 1. 全局配置与主题定义 ====================
 TARGET_DLLS = ["OpenSteamTool.dll", "dwmapi.dll", "xinput1_4.dll"]
+GITHUB_API_URL = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
 
-# 统一微软雅黑 UI 字体配置
-FONT_TITLE = ("Microsoft YaHei UI", 9, "bold")
-FONT_MAIN = ("Microsoft YaHei UI", 9)
-FONT_MAIN_BOLD = ("Microsoft YaHei UI", 9, "bold")
-FONT_BIG_BOLD = ("Microsoft YaHei UI", 10, "bold")
+THEME = {
+    "bg_app": "#f8f9fa",
+    "card_bg": "#ffffff",
+    "card_border": "#e2e8f0",
+    "accent_bar": "#0f6cbd",
+    "text_main": "#0f172a",
+    "text_sub": "#334155",
+    "text_muted": "#64748b",
+    "entry_bg": "#f8fafc",
+    "entry_border": "#cbd5e1",
+    "status_installed": "#15803d",
+    "btn_primary_bg": "#0f6cbd",
+    "btn_primary_hover": "#115ea3",
+    "btn_secondary_bg": "#f8fafc",
+    "btn_secondary_hover": "#e2e8f0",
+    "btn_deploy_a_bg": "#f0fdf4",
+    "btn_deploy_a_fg": "#15803d",
+    "btn_deploy_a_border": "#86efac",
+    "btn_deploy_a_hover": "#dcfce7",
+    "btn_deploy_b_bg": "#16a34a",
+    "btn_deploy_b_hover": "#15803d",
+    "btn_uninstall_a_bg": "#f0f9ff",
+    "btn_uninstall_a_fg": "#0284c7",
+    "btn_uninstall_a_border": "#7dd3fc",
+    "btn_uninstall_a_hover": "#e0f2fe",
+    "btn_uninstall_b_bg": "#0284c7",
+    "btn_uninstall_b_hover": "#0369a1",
+}
 
-# 中英双语文本词典
+FONTS = {
+    "title": ("Microsoft YaHei UI", 9, "bold"),
+    "main": ("Microsoft YaHei UI", 9),
+    "main_bold": ("Microsoft YaHei UI", 9, "bold"),
+    "big_bold": ("Microsoft YaHei UI", 10, "bold"),
+    "app_title": ("Microsoft YaHei UI", 10, "bold"),
+}
+
 TEXTS = {
     "zh": {
         "app_title": "OpenSteamTool 一键管理工具",
@@ -63,6 +94,7 @@ TEXTS = {
         "err_missing_local_dlls": "本地 dlls 文件夹缺失以下文件：\n{files}\n\n请先点击下方的『检查更新』并下载最新版本 DLL 文件！",
         "err_permission": "操作失败！文件可能被 Steam 占用或权限不足，请退出 Steam 或以管理员身份运行本工具。",
         "err_steam_exe_not_found": "未在路径中找到 steam.exe：\n{path}",
+        "err_no_zip_asset": "未在 GitHub Release 中找到可用的 ZIP！",
         "lang_toggle": "🌐 English"
     },
     "en": {
@@ -105,28 +137,26 @@ TEXTS = {
         "err_missing_local_dlls": "The local 'dlls' folder is missing:\n{files}\n\nPlease click 'Check Update' below to download latest DLL files first!",
         "err_permission": "Operation failed! Files may be in use or permission denied. Please close Steam or run as Administrator.",
         "err_steam_exe_not_found": "steam.exe not found in path:\n{path}",
+        "err_no_zip_asset": "No ZIP asset found in latest GitHub release!",
         "lang_toggle": "🌐 中文"
     }
 }
 
 
+# ==================== 2. 主逻辑类 ====================
 class OpenSteamToolManager:
     def __init__(self, root):
         self.root = root
-        self.current_lang = "zh"  # 默认语言：中文 ('zh' 或 'en')
+        self.current_lang = "zh"
 
         self.root.title(self.t("app_title"))
-
-        # 1. 窗口尺寸与居中处理
         self.win_width = 560
         self.win_height = 470
         self._center_window()
         self.root.resizable(False, False)
+        self.root.configure(bg=THEME["bg_app"])
 
-        # 设置全局现代底色
-        self.root.configure(bg="#f8f9fa")
-
-        # 2. 路径与 PyInstaller 兼容逻辑
+        # 定位程序运行路径 (兼容 PyInstaller 打包)
         if getattr(sys, 'frozen', False):
             self.script_dir = os.path.dirname(os.path.abspath(sys.executable))
         else:
@@ -137,55 +167,52 @@ class OpenSteamToolManager:
 
         self.is_installed = False
         self.latest_version = None
-        self._last_state_signature = None
+        self.latest_download_url = None
 
-        # 3. 初始化界面布局与事件监听
+        # 构建 UI 结构
         self._build_ui()
 
-        # 4. 自动尝试定位 Steam 路径并更新状态
+        # 读取注册表 Steam 路径
         steam_path = self._get_steam_path_from_registry()
         if steam_path:
             self.path_var.set(steam_path)
 
-        self._update_local_version_display()
-        self._update_online_version_display()
-        self.check_status()
+        # 初始刷新状态
+        self.refresh_all_status()
 
-        # 5. 启动 dlls 文件夹文件变化实时监听 (每 1000ms 轮询 + 窗口聚焦监听)
-        self.root.bind("<FocusIn>", lambda e: self._check_file_changes_now())
-        self._start_file_monitoring()
+        # 事件驱动：仅在窗口获取焦点时触发刷新，避免 1000ms 磁盘轮询
+        self.root.bind("<FocusIn>", lambda e: self.refresh_all_status())
 
     def t(self, key: str, **kwargs) -> str:
-        """获取当前语言的翻译文本"""
+        """多语言翻译辅助工具"""
         lang_dict = TEXTS.get(self.current_lang, TEXTS["zh"])
         text = lang_dict.get(key, key)
-        if kwargs:
-            text = text.format(**kwargs)
-        return text
+        return text.format(**kwargs) if kwargs else text
 
     def toggle_language(self):
-        """一键无缝切换中英双语"""
+        """一键切换中英双语"""
         self.current_lang = "en" if self.current_lang == "zh" else "zh"
         self.root.title(self.t("app_title"))
 
-        # 更新卡片标题
         self.lbl_card_path_title.config(text=self.t("card_steam_path"))
         self.lbl_card_status_title.config(text=self.t("card_status"))
         self.lbl_card_update_title.config(text=self.t("card_update"))
 
-        # 更新静态按钮文案
         self.btn_browse.config(text=self.t("browse"))
         self.btn_check_update.config(text=self.t("btn_check_update"))
         self.btn_download.config(text=self.t("btn_download_extract"))
         self.btn_lang.config(text=self.t("lang_toggle"))
 
-        # 刷新所有动态状态文案 (包括在线版本)
+        self.refresh_all_status()
+
+    def refresh_all_status(self):
+        """统一刷新界面上所有动态状态标签与操作按钮"""
+        self.check_status()
         self._update_local_version_display()
         self._update_online_version_display()
-        self.check_status()
 
     def _center_window(self):
-        """让窗口始终自动居中显示在屏幕中央"""
+        """窗口居中计算"""
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
         x = (screen_w - self.win_width) // 2
@@ -193,7 +220,7 @@ class OpenSteamToolManager:
         self.root.geometry(f"{self.win_width}x{self.win_height}+{x}+{y}")
 
     def _get_steam_path_from_registry(self) -> str:
-        """从 Windows 注册表读取 Steam 安装路径"""
+        """从注册表探测 Steam 安装目录"""
         keys = [
             (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"),
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
@@ -209,49 +236,41 @@ class OpenSteamToolManager:
                 pass
         return ""
 
-    def _style_button(self, btn, bg, fg, hover_bg, border_color=None, font=FONT_MAIN_BOLD):
-        """打造现代无硬框/柔和软线条按钮样式"""
+    def _style_button(self, btn, bg, fg, hover_bg, border_color=None, font=FONTS["main_bold"]):
+        """统一按钮样式与 Hover 动画辅助函数"""
+        config = {
+            "bg": bg, "fg": fg,
+            "activebackground": hover_bg, "activeforeground": fg,
+            "relief": tk.FLAT, "bd": 0, "cursor": "hand2", "font": font
+        }
         if border_color:
-            btn.config(
-                bg=bg, fg=fg,
-                activebackground=hover_bg, activeforeground=fg,
-                relief=tk.FLAT, bd=0,
-                highlightthickness=1,
-                highlightbackground=border_color, highlightcolor=border_color,
-                cursor="hand2", font=font
-            )
+            config.update({"highlightthickness": 1, "highlightbackground": border_color, "highlightcolor": border_color})
         else:
-            btn.config(
-                bg=bg, fg=fg,
-                activebackground=hover_bg, activeforeground=fg,
-                relief=tk.FLAT, bd=0,
-                highlightthickness=0,
-                cursor="hand2", font=font
-            )
+            config.update({"highlightthickness": 0})
 
+        btn.config(**config)
         btn.unbind("<Enter>")
         btn.unbind("<Leave>")
         btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg))
         btn.bind("<Leave>", lambda e: btn.config(bg=bg))
 
     def _create_card_frame(self, parent, title_key=""):
-        """创建现代卡片样式的容器"""
+        """卡片容器工厂函数"""
         card = tk.Frame(
-            parent, bg="#ffffff",
-            highlightbackground="#e2e8f0", highlightthickness=1,
+            parent, bg=THEME["card_bg"],
+            highlightbackground=THEME["card_border"], highlightthickness=1,
             padx=18, pady=12
         )
         if title_key:
-            header_frame = tk.Frame(card, bg="#ffffff")
-            header_frame.pack(anchor=tk.W, pady=(0, 10))
+            header = tk.Frame(card, bg=THEME["card_bg"])
+            header.pack(anchor=tk.W, pady=(0, 10))
 
-            accent_bar = tk.Frame(header_frame, bg="#0f6cbd", width=3, height=12)
+            accent_bar = tk.Frame(header, bg=THEME["accent_bar"], width=3, height=12)
             accent_bar.pack(side=tk.LEFT, padx=(0, 8))
 
-            lbl_title = tk.Label(header_frame, text=self.t(title_key), font=FONT_TITLE, fg="#0f172a", bg="#ffffff")
+            lbl_title = tk.Label(header, text=self.t(title_key), font=FONTS["title"], fg=THEME["text_main"], bg=THEME["card_bg"])
             lbl_title.pack(side=tk.LEFT)
 
-            # 存储 title label 引用以便语言切换
             if title_key == "card_steam_path":
                 self.lbl_card_path_title = lbl_title
             elif title_key == "card_status":
@@ -261,50 +280,50 @@ class OpenSteamToolManager:
         return card
 
     def _build_ui(self):
-        """构建现代卡片式 GUI 布局"""
-        container = tk.Frame(self.root, bg="#f8f9fa", padx=16, pady=12)
+        """构建界面布局"""
+        container = tk.Frame(self.root, bg=THEME["bg_app"], padx=16, pady=12)
         container.pack(fill=tk.BOTH, expand=True)
 
-        # 顶部工具栏 (应用标题与语言切换按钮)
-        top_bar = tk.Frame(container, bg="#f8f9fa")
+        # 顶栏
+        top_bar = tk.Frame(container, bg=THEME["bg_app"])
         top_bar.pack(fill=tk.X, pady=(0, 8))
 
-        lbl_app = tk.Label(top_bar, text="OpenSteamTool Manager", font=("Microsoft YaHei UI", 10, "bold"), fg="#0f172a", bg="#f8f9fa")
+        lbl_app = tk.Label(top_bar, text="OpenSteamTool Manager", font=FONTS["app_title"], fg=THEME["text_main"], bg=THEME["bg_app"])
         lbl_app.pack(side=tk.LEFT)
 
         self.btn_lang = tk.Button(top_bar, text=self.t("lang_toggle"), command=self.toggle_language, pady=2, padx=8)
-        self._style_button(self.btn_lang, bg="#ffffff", fg="#0f6cbd", hover_bg="#f1f5f9", border_color="#cbd5e1", font=FONT_MAIN)
+        self._style_button(self.btn_lang, bg=THEME["card_bg"], fg=THEME["btn_primary_bg"], hover_bg=THEME["entry_bg"], border_color=THEME["entry_border"], font=FONTS["main"])
         self.btn_lang.pack(side=tk.RIGHT)
 
-        # --- 卡片 1: Steam 路径设置 ---
+        # 卡片 1: Steam 安装路径
         card_path = self._create_card_frame(container, "card_steam_path")
         card_path.pack(fill=tk.X, pady=(0, 10))
 
         self.path_var = tk.StringVar()
-        self.path_var.trace_add("write", lambda *args: self.check_status())
+        self.path_var.trace_add("write", lambda *args: self.refresh_all_status())
 
-        entry_box = tk.Frame(card_path, bg="#ffffff")
+        entry_box = tk.Frame(card_path, bg=THEME["card_bg"])
         entry_box.pack(fill=tk.X, padx=(6, 0))
 
-        entry_wrapper = tk.Frame(entry_box, bg="#f8fafc", highlightbackground="#cbd5e1", highlightthickness=1)
+        entry_wrapper = tk.Frame(entry_box, bg=THEME["entry_bg"], highlightbackground=THEME["entry_border"], highlightthickness=1)
         entry_wrapper.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
 
-        self.entry_path = tk.Entry(entry_wrapper, textvariable=self.path_var, font=FONT_MAIN, bg="#f8fafc", fg="#1e293b", relief=tk.FLAT, bd=0)
+        self.entry_path = tk.Entry(entry_wrapper, textvariable=self.path_var, font=FONTS["main"], bg=THEME["entry_bg"], fg=THEME["text_main"], relief=tk.FLAT, bd=0)
         self.entry_path.pack(fill=tk.X, expand=True, padx=8, pady=4)
 
         self.btn_browse = tk.Button(entry_box, text=self.t("browse"), command=self.on_browse, pady=3, padx=12)
-        self._style_button(self.btn_browse, bg="#f8fafc", fg="#334155", hover_bg="#e2e8f0", border_color="#cbd5e1", font=FONT_MAIN)
+        self._style_button(self.btn_browse, bg=THEME["btn_secondary_bg"], fg=THEME["text_sub"], hover_bg=THEME["btn_secondary_hover"], border_color=THEME["entry_border"], font=FONTS["main"])
         self.btn_browse.pack(side=tk.RIGHT)
 
-        # --- 卡片 2: 本地部署状态 ---
+        # 卡片 2: 本地部署状态
         card_status = self._create_card_frame(container, "card_status")
         card_status.pack(fill=tk.X, pady=(0, 10))
 
-        self.lbl_status = tk.Label(card_status, text=self.t("status_checking"), font=FONT_BIG_BOLD, fg="#64748b", bg="#ffffff")
+        self.lbl_status = tk.Label(card_status, text=self.t("status_checking"), font=FONTS["big_bold"], fg=THEME["text_muted"], bg=THEME["card_bg"])
         self.lbl_status.pack(anchor=tk.W, pady=2, padx=(6, 0))
 
-        # --- 操作按钮区 (双按钮并排) ---
-        action_frame = tk.Frame(container, bg="#f8f9fa")
+        # 核心双按钮交互区
+        action_frame = tk.Frame(container, bg=THEME["bg_app"])
         action_frame.pack(fill=tk.X, pady=(0, 10))
 
         self.btn_action_a = tk.Button(action_frame, text=self.t("btn_deploy_only"), pady=7)
@@ -313,72 +332,28 @@ class OpenSteamToolManager:
         self.btn_action_b = tk.Button(action_frame, text=self.t("btn_deploy_launch"), pady=7)
         self.btn_action_b.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(6, 0))
 
-        # --- 卡片 3: 在线版本更新 ---
+        # 卡片 3: 在线版本更新
         card_update = self._create_card_frame(container, "card_update")
         card_update.pack(fill=tk.X)
 
-        self.lbl_local_version = tk.Label(card_update, text=self.t("local_version"), font=FONT_MAIN, fg="#0f172a", bg="#ffffff")
+        self.lbl_local_version = tk.Label(card_update, text=self.t("local_version"), font=FONTS["main"], fg=THEME["text_main"], bg=THEME["card_bg"])
         self.lbl_local_version.pack(anchor=tk.W, pady=(0, 4), padx=(6, 0))
 
-        self.lbl_update_status = tk.Label(card_update, text=self.t("online_version") + self.t("online_unknown"), font=FONT_MAIN, fg="#475569", bg="#ffffff")
+        self.lbl_update_status = tk.Label(card_update, text=self.t("online_version") + self.t("online_unknown"), font=FONTS["main"], fg=THEME["text_sub"], bg=THEME["card_bg"])
         self.lbl_update_status.pack(anchor=tk.W, pady=(0, 10), padx=(6, 0))
 
-        btn_update_box = tk.Frame(card_update, bg="#ffffff")
+        btn_update_box = tk.Frame(card_update, bg=THEME["card_bg"])
         btn_update_box.pack(fill=tk.X, padx=(6, 0))
 
         self.btn_check_update = tk.Button(btn_update_box, text=self.t("btn_check_update"), command=self.check_update, pady=4, padx=12)
-        self._style_button(self.btn_check_update, bg="#f8fafc", fg="#334155", hover_bg="#e2e8f0", border_color="#cbd5e1", font=FONT_MAIN)
+        self._style_button(self.btn_check_update, bg=THEME["btn_secondary_bg"], fg=THEME["text_sub"], hover_bg=THEME["btn_secondary_hover"], border_color=THEME["entry_border"], font=FONTS["main"])
         self.btn_check_update.pack(side=tk.LEFT, padx=(0, 8))
 
         self.btn_download = tk.Button(btn_update_box, text=self.t("btn_download_extract"), pady=4, padx=12, command=self.download_and_extract)
-        self._style_button(self.btn_download, bg="#0f6cbd", fg="#ffffff", hover_bg="#115ea3", font=FONT_MAIN_BOLD)
-
-    # --- 文件变化实时监听机制 ---
-    def _get_state_signature(self):
-        """计算本地文件与状态签名，用于检测外部文件增删改"""
-        steam_dir = self.path_var.get().strip()
-        sig = [steam_dir]
-
-        if steam_dir and os.path.isdir(steam_dir):
-            for dll in TARGET_DLLS:
-                p = os.path.join(steam_dir, dll)
-                sig.append((p, os.path.isfile(p), os.path.getmtime(p) if os.path.isfile(p) else 0))
-
-        sig.append(os.path.isdir(self.dlls_dir))
-        if os.path.isdir(self.dlls_dir):
-            for dll in TARGET_DLLS:
-                p = os.path.join(self.dlls_dir, dll)
-                sig.append((p, os.path.isfile(p), os.path.getmtime(p) if os.path.isfile(p) else 0))
-
-        if os.path.isfile(self.version_file):
-            sig.append((self.version_file, os.path.getmtime(self.version_file)))
-        else:
-            sig.append(None)
-
-        return tuple(sig)
-
-    def _start_file_monitoring(self):
-        """后台轻量轮询检测 dlls 文件夹与 Steam 文件变动"""
-        def _poll():
-            self._check_file_changes_now()
-            self.root.after(1000, _poll)
-
-        self.root.after(1000, _poll)
-
-    def _check_file_changes_now(self):
-        """立即检查文件变动，如有修改则触发实时 UI 刷新"""
-        try:
-            current_sig = self._get_state_signature()
-            if current_sig != self._last_state_signature:
-                self._last_state_signature = current_sig
-                self.check_status()
-                self._update_local_version_display()
-                self._update_online_version_display()
-        except Exception:
-            pass
+        self._style_button(self.btn_download, bg=THEME["btn_primary_bg"], fg="#ffffff", hover_bg=THEME["btn_primary_hover"], font=FONTS["main_bold"])
 
     def _get_local_version(self) -> str:
-        """读取本地 dlls 记录的版本号"""
+        """读取本地记录的版本信息"""
         if os.path.isfile(self.version_file):
             try:
                 with open(self.version_file, "r", encoding="utf-8") as f:
@@ -388,35 +363,35 @@ class OpenSteamToolManager:
         return ""
 
     def _update_local_version_display(self):
-        """动态更新界面上的『当前本地版本』标签"""
+        """刷新『当前本地版本』展示"""
         local_ver = self._get_local_version()
         prefix = self.t("local_version")
 
         if local_ver:
             clean_ver = local_ver.lstrip("v")
-            self.lbl_local_version.config(text=f"{prefix}v{clean_ver}", fg="#0f172a")
+            self.lbl_local_version.config(text=f"{prefix}v{clean_ver}", fg=THEME["text_main"])
         else:
             all_dlls_exist = all(os.path.isfile(os.path.join(self.dlls_dir, dll)) for dll in TARGET_DLLS)
             if all_dlls_exist:
-                self.lbl_local_version.config(text=prefix + self.t("local_ver_ready_no_record"), fg="#334155")
+                self.lbl_local_version.config(text=prefix + self.t("local_ver_ready_no_record"), fg=THEME["text_sub"])
             else:
-                self.lbl_local_version.config(text=prefix + self.t("local_ver_missing"), fg="#64748b")
+                self.lbl_local_version.config(text=prefix + self.t("local_ver_missing"), fg=THEME["text_muted"])
 
     def _update_online_version_display(self):
-        """独立且安全的『最新线上版本』文本刷新函数，完美支持切语言"""
+        """刷新『最新线上版本』展示"""
         prefix = self.t("online_version")
         if self.latest_version is None:
             self.lbl_update_status.config(text=prefix + self.t("online_unknown"))
         else:
-            self._on_check_success(self.latest_version)
+            self._on_check_success(self.latest_version, self.latest_download_url)
 
-    def check_status(self, *args):
-        """检查 Steam 目录下三个 DLL 是否完整存在，并更新 UI"""
+    def check_status(self):
+        """检查 Steam 路径及 DLL 存在状态"""
         steam_dir = self.path_var.get().strip()
 
         if not steam_dir or not os.path.isdir(steam_dir):
             self.is_installed = False
-            self.lbl_status.config(text=self.t("status_invalid_path"), fg="#64748b")
+            self.lbl_status.config(text=self.t("status_invalid_path"), fg=THEME["text_muted"])
             self._update_action_buttons()
             return
 
@@ -424,57 +399,56 @@ class OpenSteamToolManager:
 
         if all_exist:
             self.is_installed = True
-            self.lbl_status.config(text=self.t("status_installed"), fg="#15803d")
+            self.lbl_status.config(text=self.t("status_installed"), fg=THEME["status_installed"])
         else:
             self.is_installed = False
-            self.lbl_status.config(text=self.t("status_not_installed"), fg="#64748b")
+            self.lbl_status.config(text=self.t("status_not_installed"), fg=THEME["text_muted"])
 
         self._update_action_buttons()
 
     def _update_action_buttons(self):
-        """根据当前状态更新色彩引导（翠绿/清爽天空蓝）与主副视觉层级"""
+        """根据当前安装状态更新主按钮的颜色、层级与事件映射"""
         if self.is_installed:
             self.btn_action_a.config(text=self.t("btn_uninstall_only"), command=self.on_btn_a_click)
             self._style_button(
                 self.btn_action_a,
-                bg="#f0f9ff", fg="#0284c7",
-                hover_bg="#e0f2fe", border_color="#7dd3fc",
-                font=FONT_MAIN_BOLD
+                bg=THEME["btn_uninstall_a_bg"], fg=THEME["btn_uninstall_a_fg"],
+                hover_bg=THEME["btn_uninstall_a_hover"], border_color=THEME["btn_uninstall_a_border"],
+                font=FONTS["main_bold"]
             )
 
             self.btn_action_b.config(text=self.t("btn_uninstall_launch"), command=self.on_btn_b_click)
             self._style_button(
                 self.btn_action_b,
-                bg="#0284c7", fg="#ffffff",
-                hover_bg="#0369a1",
-                font=FONT_BIG_BOLD
+                bg=THEME["btn_uninstall_b_bg"], fg="#ffffff",
+                hover_bg=THEME["btn_uninstall_b_hover"],
+                font=FONTS["big_bold"]
             )
         else:
             self.btn_action_a.config(text=self.t("btn_deploy_only"), command=self.on_btn_a_click)
             self._style_button(
                 self.btn_action_a,
-                bg="#f0fdf4", fg="#15803d",
-                hover_bg="#dcfce7", border_color="#86efac",
-                font=FONT_MAIN_BOLD
+                bg=THEME["btn_deploy_a_bg"], fg=THEME["btn_deploy_a_fg"],
+                hover_bg=THEME["btn_deploy_a_hover"], border_color=THEME["btn_deploy_a_border"],
+                font=FONTS["main_bold"]
             )
 
             self.btn_action_b.config(text=self.t("btn_deploy_launch"), command=self.on_btn_b_click)
             self._style_button(
                 self.btn_action_b,
-                bg="#16a34a", fg="#ffffff",
-                hover_bg="#15803d",
-                font=FONT_BIG_BOLD
+                bg=THEME["btn_deploy_b_bg"], fg="#ffffff",
+                hover_bg=THEME["btn_deploy_b_hover"],
+                font=FONTS["big_bold"]
             )
 
     def on_browse(self):
-        """选择 Steam 目录"""
+        """文件夹选择逻辑"""
         selected = filedialog.askdirectory(title=self.t("card_steam_path"))
         if selected:
             self.path_var.set(os.path.normpath(selected))
 
-    # --- 核心部署与卸载逻辑 ---
+    # ==================== 部署与卸载 Core 逻辑 ====================
     def _do_deploy(self) -> bool:
-        """执行部署文件逻辑"""
         steam_dir = self.path_var.get().strip()
         if not steam_dir or not os.path.isdir(steam_dir):
             messagebox.showerror(self.t("err_title"), self.t("err_path_invalid"))
@@ -494,10 +468,8 @@ class OpenSteamToolManager:
                 dst = os.path.join(steam_dir, dll)
                 shutil.copy2(src, dst)
 
-            lua_dir = os.path.join(steam_dir, "config", "lua")
-            os.makedirs(lua_dir, exist_ok=True)
-
-            self.check_status()
+            os.makedirs(os.path.join(steam_dir, "config", "lua"), exist_ok=True)
+            self.refresh_all_status()
             return True
         except PermissionError:
             messagebox.showerror(self.t("err_title"), self.t("err_permission"))
@@ -507,7 +479,6 @@ class OpenSteamToolManager:
             return False
 
     def _do_uninstall(self) -> bool:
-        """执行卸载文件逻辑"""
         steam_dir = self.path_var.get().strip()
         if not steam_dir or not os.path.isdir(steam_dir):
             messagebox.showerror(self.t("err_title"), self.t("err_path_invalid"))
@@ -519,7 +490,7 @@ class OpenSteamToolManager:
                 if os.path.exists(path):
                     os.remove(path)
 
-            self.check_status()
+            self.refresh_all_status()
             return True
         except PermissionError:
             messagebox.showerror(self.t("err_title"), self.t("err_permission"))
@@ -529,7 +500,6 @@ class OpenSteamToolManager:
             return False
 
     def _launch_steam(self):
-        """后台拉起 steam.exe"""
         steam_dir = self.path_var.get().strip()
         steam_exe = os.path.join(steam_dir, "steam.exe")
         if os.path.isfile(steam_exe):
@@ -541,7 +511,6 @@ class OpenSteamToolManager:
             messagebox.showerror(self.t("err_title"), self.t("err_steam_exe_not_found", path=steam_exe))
 
     def on_btn_a_click(self):
-        """响应按钮 A 逻辑 (仅部署 / 仅卸载)"""
         if self.is_installed:
             if self._do_uninstall():
                 messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_success_msg"))
@@ -550,7 +519,6 @@ class OpenSteamToolManager:
                 messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_success_msg"))
 
     def on_btn_b_click(self):
-        """响应按钮 B 逻辑 (部署并启动 / 卸载并启动)"""
         if self.is_installed:
             if self._do_uninstall():
                 messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
@@ -560,19 +528,18 @@ class OpenSteamToolManager:
                 messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
                 self._launch_steam()
 
-    # --- 检查更新与自动解压逻辑 ---
+    # ==================== 网络更新与 Asset 动态解析逻辑 ====================
     def check_update(self):
-        """异步请求 GitHub API 检查更新"""
+        """异步请求 GitHub API 并动态提取 ZIP 资源链接"""
         self.btn_check_update.config(state=tk.DISABLED)
         self.lbl_update_status.config(text=self.t("online_version") + self.t("online_checking"))
 
         def _worker():
-            api_url = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "application/vnd.github.v3+json"
             }
-            req = urllib.request.Request(api_url, headers=headers)
+            req = urllib.request.Request(GITHUB_API_URL, headers=headers)
 
             try:
                 with urllib.request.urlopen(req, timeout=10) as resp:
@@ -580,13 +547,22 @@ class OpenSteamToolManager:
                     raw_tag = data.get("tag_name", "").strip()
                     version = raw_tag.lstrip("v").strip()
 
-                    if version:
-                        self.root.after(0, self._on_check_success, version)
+                    # 动态遍历 assets 查找 zip 文件链接（解决硬编码下载文件名报错隐患）
+                    download_url = None
+                    for asset in data.get("assets", []):
+                        asset_name = asset.get("name", "")
+                        if asset_name.endswith(".zip"):
+                            download_url = asset.get("browser_download_url")
+                            break
+
+                    if version and download_url:
+                        self.root.after(0, self._on_check_success, version, download_url)
+                    elif version and not download_url:
+                        self.root.after(0, self._on_check_fail, self.t("err_no_zip_asset"))
                     else:
-                        self.root.after(0, self._on_check_fail, "Empty tag")
+                        self.root.after(0, self._on_check_fail, "Invalid Tag")
             except urllib.error.HTTPError as e:
-                msg = f"HTTP {e.code}"
-                self.root.after(0, self._on_check_fail, msg)
+                self.root.after(0, self._on_check_fail, f"HTTP {e.code}")
             except urllib.error.URLError:
                 self.root.after(0, self._on_check_fail, "Network Timeout")
             except Exception as e:
@@ -594,8 +570,9 @@ class OpenSteamToolManager:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_check_success(self, online_version):
+    def _on_check_success(self, online_version, download_url):
         self.latest_version = online_version
+        self.latest_download_url = download_url
         self.btn_check_update.config(state=tk.NORMAL)
 
         local_ver = self._get_local_version()
@@ -617,8 +594,8 @@ class OpenSteamToolManager:
         messagebox.showerror(self.t("err_title"), f"{self.t('online_check_fail')}:\n{error_msg}")
 
     def download_and_extract(self):
-        r"""异步下载线上 ZIP 并在内存中精准解压至 .\dlls\ """
-        if not self.latest_version:
+        """使用动态获取到的链接下载并在内存解压"""
+        if not self.latest_version or not self.latest_download_url:
             return
 
         self.btn_download.config(state=tk.DISABLED)
@@ -628,7 +605,7 @@ class OpenSteamToolManager:
 
         def _worker():
             version = self.latest_version
-            download_url = f"https://github.com/OpenSteam001/OpenSteamTool/releases/download/{version}/OpenSteamTool-{version}-Release.zip"
+            download_url = self.latest_download_url
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             req = urllib.request.Request(download_url, headers=headers)
 
@@ -665,14 +642,13 @@ class OpenSteamToolManager:
     def _on_download_success(self):
         self.btn_download.config(state=tk.NORMAL)
         self.btn_check_update.config(state=tk.NORMAL)
-
-        self._update_local_version_display()
         self.btn_download.pack_forget()
+
         prefix = self.t("online_version")
         self.lbl_update_status.config(text=f"{prefix}v{self.latest_version} {self.t('online_latest')}")
 
         messagebox.showinfo(self.t("download_success_title"), self.t("download_success_msg"))
-        self.check_status()
+        self.refresh_all_status()
 
     def _on_download_fail(self, error_msg):
         self.btn_download.config(state=tk.NORMAL)
