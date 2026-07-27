@@ -10,10 +10,12 @@ import threading
 import subprocess
 import urllib.request
 import urllib.error
+import locale
+import ctypes
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# ==================== 0. 静态资源路径兼容辅助 ====================
+# ==================== 0. 静态资源路径与系统语言检测辅助 ====================
 def get_resource_path(relative_path: str) -> str:
     """
     获取资源文件的绝对路径（兼容源码运行与 PyInstaller --onefile/--onedir 打包环境）
@@ -21,6 +23,32 @@ def get_resource_path(relative_path: str) -> str:
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+
+def get_system_language() -> str:
+    """
+    检测系统语言：若为简体中文系统则返回 'zh'，否则统一默认返回 'en'
+    """
+    try:
+        if os.name == 'nt':
+            # 0x0804: zh-CN (简体中文 - 中国)
+            # 0x1004: zh-SG (简体中文 - 新加坡)
+            lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            if lang_id in (0x0804, 0x1004):
+                return "zh"
+    except Exception:
+        pass
+
+    try:
+        loc = locale.getdefaultlocale()[0] or locale.getlocale()[0] or ""
+        if loc:
+            loc_lower = loc.lower().replace("-", "_")
+            if loc_lower.startswith("zh_cn") or loc_lower.startswith("zh_hans") or loc_lower == "zh_sg":
+                return "zh"
+    except Exception:
+        pass
+
+    return "en"
 
 
 # ==================== 1. 全局配置与主题定义 ====================
@@ -151,7 +179,7 @@ TEXTS = {
         "err_permission": "Operation failed! Files may be in use or permission denied. Please close Steam or run as Administrator.",
         "err_steam_exe_not_found": "steam.exe not found in path:\n{path}",
         "err_no_zip_asset": "No ZIP asset found in latest GitHub release!",
-        "lang_toggle": "🌐 中文"
+        "lang_toggle": "🌐 简体中文"
     }
 }
 
@@ -160,7 +188,8 @@ TEXTS = {
 class OpenSteamToolManager:
     def __init__(self, root):
         self.root = root
-        self.current_lang = "zh"
+        # 自动识别系统语言：仅简体中文系统默认 "zh"，其他系统默认 "en"
+        self.current_lang = get_system_language()
 
         self.root.title(self.t("app_title"))
         self.win_width = 560
@@ -472,7 +501,7 @@ class OpenSteamToolManager:
         """根据当前部署状态动态更新核心双按钮"""
         if self.is_installed:
             # 状态：已部署 OpenSteamTool
-            # 按钮 A：退出 Steam 并卸载工具
+            # 按钮 A：退出 Steam 并卸载补丁
             self.btn_action_a.config(text=self.t("btn_close_and_uninstall"), command=self.on_close_and_uninstall)
             self._style_button(
                 self.btn_action_a,
@@ -481,7 +510,7 @@ class OpenSteamToolManager:
                 font=FONTS["main_bold"]
             )
 
-            # 按钮 B：卸载工具并重启 Steam
+            # 按钮 B：卸载补丁并重启 Steam
             self.btn_action_b.config(text=self.t("btn_uninstall_and_restart"), command=self.on_uninstall_and_restart)
             self._style_button(
                 self.btn_action_b,
@@ -491,7 +520,7 @@ class OpenSteamToolManager:
             )
         else:
             # 状态：未部署 OpenSteamTool
-            # 按钮 A：部署工具并启动 Steam
+            # 按钮 A：应用补丁并启动 Steam
             self.btn_action_a.config(text=self.t("btn_deploy_and_launch"), command=self.on_deploy_and_launch)
             self._style_button(
                 self.btn_action_a,
@@ -500,7 +529,7 @@ class OpenSteamToolManager:
                 font=FONTS["big_bold"]
             )
 
-            # 按钮 B：纯净模式启动 Steam
+            # 按钮 B：正常启动 Steam
             self.btn_action_b.config(text=self.t("btn_clean_launch"), command=self.on_clean_launch)
             self._style_button(
                 self.btn_action_b,
@@ -579,7 +608,7 @@ class OpenSteamToolManager:
 
     # ==================== 按钮行为响应 handler ====================
     def on_deploy_and_launch(self):
-        """【未部署状态-左按钮】部署工具并启动 Steam"""
+        """【未部署状态-左按钮】应用补丁并启动 Steam"""
         was_running = self._is_steam_running()
         if not self._check_and_handle_running_steam():
             return
@@ -590,7 +619,7 @@ class OpenSteamToolManager:
             self._launch_steam()
 
     def on_clean_launch(self):
-        """【未部署状态-右按钮】纯净模式启动 Steam (确保无工具 DLL)"""
+        """【未部署状态-右按钮】正常启动 Steam (确保无补丁 DLL)"""
         steam_dir = self.path_var.get().strip()
         if not steam_dir or not os.path.isdir(steam_dir):
             messagebox.showerror(self.t("err_title"), self.t("err_path_invalid"))
@@ -606,7 +635,7 @@ class OpenSteamToolManager:
         self._launch_steam()
 
     def on_close_and_uninstall(self):
-        """【已部署状态-左按钮】退出 Steam 并卸载工具 (不重启 Steam)"""
+        """【已部署状态-左按钮】退出 Steam 并卸载补丁 (不重启 Steam)"""
         if self._is_steam_running():
             if not self._check_and_handle_running_steam():
                 return
@@ -615,7 +644,7 @@ class OpenSteamToolManager:
             messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_success_msg"))
 
     def on_uninstall_and_restart(self):
-        """【已部署状态-右按钮】卸载工具并重启 Steam"""
+        """【已部署状态-右按钮】卸载补丁并重启 Steam"""
         was_running = self._is_steam_running()
         if not self._check_and_handle_running_steam():
             return
