@@ -1,10 +1,10 @@
 import os
 import sys
 import json
+import time
 import shutil
 import zipfile
 import io
-import re
 import winreg
 import threading
 import subprocess
@@ -16,15 +16,6 @@ from tkinter import ttk, filedialog, messagebox
 # ==================== 1. 全局配置与主题定义 ====================
 TARGET_DLLS = ["OpenSteamTool.dll", "dwmapi.dll", "xinput1_4.dll"]
 GITHUB_API_URL = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
-JSDELIVR_NODES_URL = "https://cdn.jsdelivr.net/gh/hubporg/ghproxy-next@main/components/nodes.ts"
-
-# 用户指定的静态保底加速节点
-STATIC_NODES = [
-    "https://gh-proxy.com/",
-    "https://cdn.akaere.online/",
-    "https://jiashu.1win.eu.org/",
-    "https://tvv.tw/"
-]
 
 THEME = {
     "bg_app": "#f8f9fa",
@@ -99,10 +90,13 @@ TEXTS = {
         "uninstall_success_title": "成功",
         "uninstall_success_msg": "OpenSteamTool 已成功卸载！",
         "uninstall_launch_msg": "OpenSteamTool 已卸载，正在启动 Steam...",
+        "prompt_steam_running_title": "Steam 正在运行",
+        "prompt_steam_running_msg": "检测到 Steam 当前正在运行，部署/卸载 DLL 需要先退出 Steam。\n\n是否自动关闭 Steam 并继续？",
+        "err_kill_steam_failed": "自动关闭 Steam 进程失败，请先手动关闭 Steam 后重试！",
         "err_title": "错误",
         "err_path_invalid": "请选择正确的 Steam 安装目录！",
         "err_missing_local_dlls": "本地 dlls 文件夹缺失以下文件：\n{files}\n\n请先点击下方的『检查更新』并下载最新版本 DLL 文件！",
-        "err_permission": "操作失败！文件可能被 Steam 占用或权限不足，请退出 Steam 或以管理员身份运行本工具。",
+        "err_permission": "操作失败！文件可能被占用或权限不足，请退出 Steam 或以管理员身份运行本工具。",
         "err_steam_exe_not_found": "未在路径中找到 steam.exe：\n{path}",
         "err_no_zip_asset": "未在 GitHub Release 中找到可用的 ZIP 资产包！",
         "lang_toggle": "🌐 English"
@@ -142,6 +136,9 @@ TEXTS = {
         "uninstall_success_title": "Success",
         "uninstall_success_msg": "OpenSteamTool uninstalled successfully!",
         "uninstall_launch_msg": "OpenSteamTool uninstalled. Launching Steam...",
+        "prompt_steam_running_title": "Steam is Running",
+        "prompt_steam_running_msg": "Steam is currently running. Deploying/Uninstalling requires exiting Steam first.\n\nWould you like to exit Steam automatically and continue?",
+        "err_kill_steam_failed": "Failed to close Steam automatically! Please exit Steam manually and try again.",
         "err_title": "Error",
         "err_path_invalid": "Please select a valid Steam installation directory!",
         "err_missing_local_dlls": "The local 'dlls' folder is missing:\n{files}\n\nPlease click 'Check Update' below to download latest DLL files first!",
@@ -153,67 +150,7 @@ TEXTS = {
 }
 
 
-# ==================== 2. 代理与网络请求管理模块 (纯内存模式) ====================
-class ProxyManager:
-    """管理 GitHub 加速节点：纯内存模式，不向硬盘写入任何 json 文件"""
-    def __init__(self):
-        # 初始只使用内存中的静态保底节点
-        self.nodes = list(STATIC_NODES)
-
-    def fetch_latest_nodes_async(self):
-        """后台异步更新内存中的节点列表"""
-        def _worker():
-            try:
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                req = urllib.request.Request(JSDELIVR_NODES_URL, headers=headers)
-                with urllib.request.urlopen(req, timeout=8) as resp:
-                    content = resp.read().decode("utf-8")
-
-                    extracted = re.findall(r'https?://[a-zA-Z0-9.\-]+(?:\:[0-9]+)?/', content)
-                    valid_nodes = list(dict.fromkeys([url for url in extracted if "github" not in url]))
-
-                    combined = list(dict.fromkeys(STATIC_NODES + valid_nodes))
-
-                    if combined:
-                        self.nodes = combined  # 仅更新内存变量，绝不写入硬盘
-            except Exception:
-                pass
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-
-def fetch_with_fallback(target_url: str, proxy_nodes: list, timeout: int = 5) -> tuple:
-    """
-    返回: (data_bytes, used_source_name)
-    """
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
-    # 1. 尝试直连
-    try:
-        req = urllib.request.Request(target_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read(), "直连"
-    except Exception:
-        pass  # 直连失败，进入代理重试
-
-    # 2. 遍历代理节点
-    last_error = None
-    for node in proxy_nodes:
-        clean_node = node if node.endswith("/") else node + "/"
-        proxied_url = f"{clean_node}{target_url}"
-        try:
-            req = urllib.request.Request(proxied_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                domain = node.split("//")[-1].strip("/")
-                return resp.read(), f"加速源:{domain}"
-        except Exception as e:
-            last_error = e
-            continue
-
-    raise Exception(f"请求失败(直连及代理节点均超时): {last_error}")
-
-
-# ==================== 3. 主程序 GUI 类 ====================
+# ==================== 2. 主程序 GUI 类 ====================
 class OpenSteamToolManager:
     def __init__(self, root):
         self.root = root
@@ -238,10 +175,6 @@ class OpenSteamToolManager:
         self.is_installed = False
         self.latest_version = None
         self.latest_download_url = None
-
-        # 初始化纯内存代理管理器
-        self.proxy_mgr = ProxyManager()
-        self.proxy_mgr.fetch_latest_nodes_async()
 
         # 构建 UI 界面
         self._build_ui()
@@ -309,6 +242,47 @@ class OpenSteamToolManager:
             except Exception:
                 pass
         return ""
+
+    # ==================== 进程管理逻辑 ====================
+    def _is_steam_running(self) -> bool:
+        """检查 steam.exe 是否在后台运行"""
+        try:
+            cmd = ["tasklist", "/FI", "IMAGENAME eq steam.exe"]
+            flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", creationflags=flags)
+            return "steam.exe" in res.stdout.lower()
+        except Exception:
+            return False
+
+    def _kill_steam(self) -> bool:
+        """强制关闭 steam.exe 并等待其退出"""
+        try:
+            cmd = ["taskkill", "/F", "/IM", "steam.exe"]
+            flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            subprocess.run(cmd, capture_output=True, creationflags=flags)
+
+            for _ in range(10):
+                time.sleep(0.5)
+                if not self._is_steam_running():
+                    return True
+            return not self._is_steam_running()
+        except Exception:
+            return False
+
+    def _check_and_handle_running_steam(self) -> bool:
+        """如果 Steam 在运行，提示用户并处理关闭。返回 True 允许继续，False 取消"""
+        if self._is_steam_running():
+            confirmed = messagebox.askyesno(
+                self.t("prompt_steam_running_title"),
+                self.t("prompt_steam_running_msg")
+            )
+            if not confirmed:
+                return False
+
+            if not self._kill_steam():
+                messagebox.showerror(self.t("err_title"), self.t("err_kill_steam_failed"))
+                return False
+        return True
 
     def _style_button(self, btn, bg, fg, hover_bg, border_color=None, font=FONTS["main_bold"]):
         """按钮统一样式化"""
@@ -579,6 +553,10 @@ class OpenSteamToolManager:
             messagebox.showerror(self.t("err_title"), self.t("err_steam_exe_not_found", path=steam_exe))
 
     def on_btn_a_click(self):
+        """仅部署 / 仅卸载"""
+        if not self._check_and_handle_running_steam():
+            return
+
         if self.is_installed:
             if self._do_uninstall():
                 messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_success_msg"))
@@ -587,6 +565,10 @@ class OpenSteamToolManager:
                 messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_success_msg"))
 
     def on_btn_b_click(self):
+        """部署并启动 / 卸载并启动"""
+        if not self._check_and_handle_running_steam():
+            return
+
         if self.is_installed:
             if self._do_uninstall():
                 messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
@@ -596,36 +578,45 @@ class OpenSteamToolManager:
                 messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
                 self._launch_steam()
 
-    # ==================== 网络更新（结合代理回退） ====================
+    # ==================== 网络更新 ====================
     def check_update(self):
         self.btn_check_update.config(state=tk.DISABLED)
         self.lbl_update_status.config(text=self.t("online_version") + self.t("online_checking"))
 
         def _worker():
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            req = urllib.request.Request(GITHUB_API_URL, headers=headers)
             try:
-                raw_data, source_name = fetch_with_fallback(GITHUB_API_URL, self.proxy_mgr.nodes, timeout=5)
-                data = json.loads(raw_data.decode("utf-8"))
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
 
-                raw_tag = data.get("tag_name", "").strip()
-                version = raw_tag.lstrip("v").strip()
+                    raw_tag = data.get("tag_name", "").strip()
+                    version = raw_tag.lstrip("v").strip()
 
-                download_url = None
-                for asset in data.get("assets", []):
-                    asset_name = asset.get("name", "")
-                    if asset_name.endswith(".zip"):
-                        download_url = asset.get("browser_download_url")
-                        break
+                    download_url = None
+                    for asset in data.get("assets", []):
+                        asset_name = asset.get("name", "")
+                        if asset_name.endswith(".zip"):
+                            download_url = asset.get("browser_download_url")
+                            break
 
-                if version and download_url:
-                    self.root.after(0, self._on_check_success, version, download_url, source_name)
-                else:
-                    self.root.after(0, self._on_check_fail, self.t("err_no_zip_asset"))
+                    if version and download_url:
+                        self.root.after(0, self._on_check_success, version, download_url)
+                    else:
+                        self.root.after(0, self._on_check_fail, self.t("err_no_zip_asset"))
+            except urllib.error.HTTPError as e:
+                self.root.after(0, self._on_check_fail, f"HTTP {e.code}")
+            except urllib.error.URLError:
+                self.root.after(0, self._on_check_fail, "Network Timeout")
             except Exception as e:
                 self.root.after(0, self._on_check_fail, str(e))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_check_success(self, online_version, download_url, source_name=""):
+    def _on_check_success(self, online_version, download_url):
         self.latest_version = online_version
         self.latest_download_url = download_url
         self.btn_check_update.config(state=tk.NORMAL)
@@ -634,13 +625,12 @@ class OpenSteamToolManager:
         all_local_exist = all(os.path.isfile(os.path.join(self.dlls_dir, dll)) for dll in TARGET_DLLS)
 
         prefix = self.t("online_version")
-        source_info = f" [{source_name}]" if source_name else ""
 
         if all_local_exist and local_ver == online_version:
-            self.lbl_update_status.config(text=f"{prefix}v{online_version} {self.t('online_latest')}{source_info}")
+            self.lbl_update_status.config(text=f"{prefix}v{online_version} {self.t('online_latest')}")
             self.btn_download.pack_forget()
         else:
-            self.lbl_update_status.config(text=f"{prefix}v{online_version} {self.t('online_update_avail')}{source_info}")
+            self.lbl_update_status.config(text=f"{prefix}v{online_version} {self.t('online_update_avail')}")
             self.btn_download.pack(side=tk.LEFT)
 
     def _on_check_fail(self, error_msg):
@@ -651,7 +641,6 @@ class OpenSteamToolManager:
         messagebox.showerror(self.t("err_title"), f"{self.t('online_check_fail')}:\n{error_msg}")
 
     def download_and_extract(self):
-        """支持代理节点自动回退的 ZIP 下载与内存解压逻辑"""
         if not self.latest_version or not self.latest_download_url:
             return
 
@@ -661,8 +650,11 @@ class OpenSteamToolManager:
         self.lbl_update_status.config(text=f"{prefix}{self.t('downloading')} v{self.latest_version}...")
 
         def _worker():
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            req = urllib.request.Request(self.latest_download_url, headers=headers)
             try:
-                zip_bytes, _ = fetch_with_fallback(self.latest_download_url, self.proxy_mgr.nodes, timeout=25)
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    zip_bytes = resp.read()
 
                 os.makedirs(self.dlls_dir, exist_ok=True)
                 extracted_count = 0
@@ -681,6 +673,8 @@ class OpenSteamToolManager:
                     self.root.after(0, self._on_download_success)
                 else:
                     self.root.after(0, self._on_download_fail, "ZIP missing target DLLs")
+            except urllib.error.HTTPError as e:
+                self.root.after(0, self._on_download_fail, f"HTTP {e.code}")
             except Exception as e:
                 self.root.after(0, self._on_download_fail, str(e))
 
