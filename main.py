@@ -42,10 +42,6 @@ THEME = {
     "btn_primary_hover": "#115ea3",
     "btn_secondary_bg": "#f8fafc",
     "btn_secondary_hover": "#e2e8f0",
-    "btn_deploy_a_bg": "#f0fdf4",
-    "btn_deploy_a_fg": "#15803d",
-    "btn_deploy_a_border": "#86efac",
-    "btn_deploy_a_hover": "#dcfce7",
     "btn_deploy_b_bg": "#16a34a",
     "btn_deploy_b_hover": "#15803d",
     "btn_uninstall_a_bg": "#f0f9ff",
@@ -68,17 +64,17 @@ TEXTS = {
     "zh": {
         "app_title": "OpenSteamTool 一键管理工具",
         "card_steam_path": "STEAM 安装路径",
-        "card_status": "本地部署状态",
+        "card_status": "本地应用状态",
         "card_update": "在线版本更新",
         "browse": "浏览...",
         "status_checking": "【检测中】正在读取本地状态...",
-        "status_installed": "【已安装】OpenSteamTool 已成功部署",
-        "status_not_installed": "【未安装】检测到文件未完整部署",
-        "status_invalid_path": "【未安装】请先指定有效的 Steam 安装路径",
-        "btn_deploy_only": "仅部署",
-        "btn_uninstall_only": "仅卸载",
-        "btn_deploy_launch": "▶ 部署并启动 Steam",
-        "btn_uninstall_launch": "▶ 卸载并启动 Steam",
+        "status_installed": "【已应用】OpenSteamTool 补丁已成功生效",
+        "status_not_installed": "【未应用】检测到补丁文件未完整部署",
+        "status_invalid_path": "【未应用】请先指定有效的 Steam 安装路径",
+        "btn_deploy_and_launch": "▶ 应用补丁并启动 Steam",
+        "btn_clean_launch": "▶ 正常启动 Steam",
+        "btn_close_and_uninstall": "◀ 退出 Steam 并卸载补丁",
+        "btn_uninstall_and_restart": "◀ 卸载补丁并重启 Steam",
         "local_version": "当前本地版本：",
         "local_ver_ready_no_record": "已本地就绪 (未记录版本)",
         "local_ver_missing": "未下载 (dlls 文件夹缺失文件)",
@@ -92,16 +88,16 @@ TEXTS = {
         "btn_download_extract": "下载并解压新版本",
         "downloading": "正在下载并解压",
         "download_success_title": "下载成功",
-        "download_success_msg": "最新版 DLL 已成功下载至本地 dlls 文件夹，现在您可以点击上方的部署按钮进行安装！",
+        "download_success_msg": "最新版 DLL 已成功下载至本地 dlls 文件夹，现在您可以点击上方的应用按钮进行安装！",
         "download_fail_title": "下载失败",
         "deploy_success_title": "成功",
-        "deploy_success_msg": "OpenSteamTool 已成功部署！",
-        "deploy_launch_msg": "OpenSteamTool 已部署，正在启动 Steam...",
+        "deploy_success_msg": "OpenSteamTool 补丁已成功应用！",
+        "deploy_launch_msg": "OpenSteamTool 补丁已应用，正在启动 Steam...",
         "uninstall_success_title": "成功",
-        "uninstall_success_msg": "OpenSteamTool 已成功卸载！",
-        "uninstall_launch_msg": "OpenSteamTool 已卸载，正在启动 Steam...",
+        "uninstall_success_msg": "OpenSteamTool 补丁已成功卸载！",
+        "uninstall_launch_msg": "OpenSteamTool 补丁已卸载，正在重启 Steam...",
         "prompt_steam_running_title": "Steam 正在运行",
-        "prompt_steam_running_msg": "检测到 Steam 当前正在运行，部署/卸载 DLL 需要先退出 Steam。\n\n是否自动关闭 Steam 并继续？",
+        "prompt_steam_running_msg": "检测到 Steam 当前正在运行，应用/卸载 补丁需要先退出 Steam。\n\n是否自动关闭 Steam 并继续？",
         "err_kill_steam_failed": "自动关闭 Steam 进程失败，请先手动关闭 Steam 后重试！",
         "err_title": "错误",
         "err_path_invalid": "请选择正确的 Steam 安装目录！",
@@ -114,17 +110,17 @@ TEXTS = {
     "en": {
         "app_title": "OpenSteamTool Manager",
         "card_steam_path": "STEAM INSTALLATION PATH",
-        "card_status": "LOCAL DEPLOYMENT STATUS",
+        "card_status": "LOCAL PATCH STATUS",
         "card_update": "ONLINE VERSION & UPDATE",
         "browse": "Browse...",
         "status_checking": "[Checking] Reading local status...",
-        "status_installed": "[Installed] OpenSteamTool deployed successfully",
-        "status_not_installed": "[Not Installed] Files incomplete or missing",
-        "status_invalid_path": "[Not Installed] Please specify a valid Steam path",
-        "btn_deploy_only": "Deploy Only",
-        "btn_uninstall_only": "Uninstall Only",
-        "btn_deploy_launch": "▶ Deploy & Launch Steam",
-        "btn_uninstall_launch": "▶ Uninstall & Launch Steam",
+        "status_installed": "[Applied] OpenSteamTool patch is now active",
+        "status_not_installed": "[Not Applied] Patch files incomplete or missing",
+        "status_invalid_path": "[Not Applied] Please specify a valid Steam path",
+        "btn_deploy_and_launch": "▶ Apply Patch & Launch Steam",
+        "btn_clean_launch": "▶ Launch Steam Normally",
+        "btn_close_and_uninstall": "◀ Exit Steam & Uninstall Patch",
+        "btn_uninstall_and_restart": "◀ Uninstall Patch & Restart Steam",
         "local_version": "Current Local Version: ",
         "local_ver_ready_no_record": "Ready locally (No version log)",
         "local_ver_missing": "Not downloaded (Missing files in 'dlls')",
@@ -138,16 +134,16 @@ TEXTS = {
         "btn_download_extract": "Download & Extract New Version",
         "downloading": "Downloading and extracting",
         "download_success_title": "Download Success",
-        "download_success_msg": "Latest DLLs downloaded to 'dlls' folder successfully. You can now click Deploy above!",
+        "download_success_msg": "Latest DLLs downloaded to 'dlls' folder successfully. You can now click Apply above!",
         "download_fail_title": "Download Failed",
         "deploy_success_title": "Success",
-        "deploy_success_msg": "OpenSteamTool deployed successfully!",
-        "deploy_launch_msg": "OpenSteamTool deployed. Launching Steam...",
+        "deploy_success_msg": "OpenSteamTool patch applied successfully!",
+        "deploy_launch_msg": "OpenSteamTool patch applied. Launching Steam...",
         "uninstall_success_title": "Success",
-        "uninstall_success_msg": "OpenSteamTool uninstalled successfully!",
-        "uninstall_launch_msg": "OpenSteamTool uninstalled. Launching Steam...",
+        "uninstall_success_msg": "OpenSteamTool patch uninstalled successfully!",
+        "uninstall_launch_msg": "OpenSteamTool patch uninstalled. Launching Steam...",
         "prompt_steam_running_title": "Steam is Running",
-        "prompt_steam_running_msg": "Steam is currently running. Deploying/Uninstalling requires exiting Steam first.\n\nWould you like to exit Steam automatically and continue?",
+        "prompt_steam_running_msg": "Steam is currently running. Applying/Uninstalling requires exiting Steam first.\n\nWould you like to exit Steam automatically and continue?",
         "err_kill_steam_failed": "Failed to close Steam automatically! Please exit Steam manually and try again.",
         "err_title": "Error",
         "err_path_invalid": "Please select a valid Steam installation directory!",
@@ -392,14 +388,14 @@ class OpenSteamToolManager:
         self.lbl_status = tk.Label(card_status, text=self.t("status_checking"), font=FONTS["big_bold"], fg=THEME["text_muted"], bg=THEME["card_bg"])
         self.lbl_status.pack(anchor=tk.W, pady=2, padx=(6, 0))
 
-        # 核心双按钮区
+        # 核心功能双按钮区
         action_frame = tk.Frame(container, bg=THEME["bg_app"])
         action_frame.pack(fill=tk.X, pady=(0, 10))
 
-        self.btn_action_a = tk.Button(action_frame, text=self.t("btn_deploy_only"), pady=7)
+        self.btn_action_a = tk.Button(action_frame, pady=7)
         self.btn_action_a.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
 
-        self.btn_action_b = tk.Button(action_frame, text=self.t("btn_deploy_launch"), pady=7)
+        self.btn_action_b = tk.Button(action_frame, pady=7)
         self.btn_action_b.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(6, 0))
 
         # 卡片 3: 在线版本更新
@@ -473,8 +469,11 @@ class OpenSteamToolManager:
         self._update_action_buttons()
 
     def _update_action_buttons(self):
+        """根据当前部署状态动态更新核心双按钮"""
         if self.is_installed:
-            self.btn_action_a.config(text=self.t("btn_uninstall_only"), command=self.on_btn_a_click)
+            # 状态：已部署 OpenSteamTool
+            # 按钮 A：退出 Steam 并卸载工具
+            self.btn_action_a.config(text=self.t("btn_close_and_uninstall"), command=self.on_close_and_uninstall)
             self._style_button(
                 self.btn_action_a,
                 bg=THEME["btn_uninstall_a_bg"], fg=THEME["btn_uninstall_a_fg"],
@@ -482,7 +481,8 @@ class OpenSteamToolManager:
                 font=FONTS["main_bold"]
             )
 
-            self.btn_action_b.config(text=self.t("btn_uninstall_launch"), command=self.on_btn_b_click)
+            # 按钮 B：卸载工具并重启 Steam
+            self.btn_action_b.config(text=self.t("btn_uninstall_and_restart"), command=self.on_uninstall_and_restart)
             self._style_button(
                 self.btn_action_b,
                 bg=THEME["btn_uninstall_b_bg"], fg="#ffffff",
@@ -490,20 +490,23 @@ class OpenSteamToolManager:
                 font=FONTS["big_bold"]
             )
         else:
-            self.btn_action_a.config(text=self.t("btn_deploy_only"), command=self.on_btn_a_click)
+            # 状态：未部署 OpenSteamTool
+            # 按钮 A：部署工具并启动 Steam
+            self.btn_action_a.config(text=self.t("btn_deploy_and_launch"), command=self.on_deploy_and_launch)
             self._style_button(
                 self.btn_action_a,
-                bg=THEME["btn_deploy_a_bg"], fg=THEME["btn_deploy_a_fg"],
-                hover_bg=THEME["btn_deploy_a_hover"], border_color=THEME["btn_deploy_a_border"],
-                font=FONTS["main_bold"]
-            )
-
-            self.btn_action_b.config(text=self.t("btn_deploy_launch"), command=self.on_btn_b_click)
-            self._style_button(
-                self.btn_action_b,
                 bg=THEME["btn_deploy_b_bg"], fg="#ffffff",
                 hover_bg=THEME["btn_deploy_b_hover"],
                 font=FONTS["big_bold"]
+            )
+
+            # 按钮 B：纯净模式启动 Steam
+            self.btn_action_b.config(text=self.t("btn_clean_launch"), command=self.on_clean_launch)
+            self._style_button(
+                self.btn_action_b,
+                bg=THEME["card_bg"], fg=THEME["text_sub"],
+                hover_bg=THEME["btn_secondary_hover"], border_color=THEME["entry_border"],
+                font=FONTS["main_bold"]
             )
 
     def on_browse(self):
@@ -574,38 +577,53 @@ class OpenSteamToolManager:
         else:
             messagebox.showerror(self.t("err_title"), self.t("err_steam_exe_not_found", path=steam_exe))
 
-    def on_btn_a_click(self):
-        """仅部署 / 仅卸载"""
-        if not self._check_and_handle_running_steam():
-            return
-
-        if self.is_installed:
-            if self._do_uninstall():
-                messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_success_msg"))
-        else:
-            if self._do_deploy():
-                messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_success_msg"))
-
-    def on_btn_b_click(self):
-        """部署并启动 / 卸载并启动"""
-        # 记录触发动作前 Steam 是否正在运行
+    # ==================== 按钮行为响应 handler ====================
+    def on_deploy_and_launch(self):
+        """【未部署状态-左按钮】部署工具并启动 Steam"""
         was_running = self._is_steam_running()
-
         if not self._check_and_handle_running_steam():
             return
 
-        if self.is_installed:
-            if self._do_uninstall():
-                # 仅在 Steam 原本处于运行状态下才弹框提示
-                if was_running:
-                    messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
-                self._launch_steam()
-        else:
-            if self._do_deploy():
-                # 仅在 Steam 原本处于运行状态下才弹框提示
-                if was_running:
-                    messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
-                self._launch_steam()
+        if self._do_deploy():
+            if was_running:
+                messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
+            self._launch_steam()
+
+    def on_clean_launch(self):
+        """【未部署状态-右按钮】纯净模式启动 Steam (确保无工具 DLL)"""
+        steam_dir = self.path_var.get().strip()
+        if not steam_dir or not os.path.isdir(steam_dir):
+            messagebox.showerror(self.t("err_title"), self.t("err_path_invalid"))
+            return
+
+        has_dlls = any(os.path.isfile(os.path.join(steam_dir, dll)) for dll in TARGET_DLLS)
+        if has_dlls:
+            if not self._check_and_handle_running_steam():
+                return
+            if not self._do_uninstall():
+                return
+
+        self._launch_steam()
+
+    def on_close_and_uninstall(self):
+        """【已部署状态-左按钮】退出 Steam 并卸载工具 (不重启 Steam)"""
+        if self._is_steam_running():
+            if not self._check_and_handle_running_steam():
+                return
+
+        if self._do_uninstall():
+            messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_success_msg"))
+
+    def on_uninstall_and_restart(self):
+        """【已部署状态-右按钮】卸载工具并重启 Steam"""
+        was_running = self._is_steam_running()
+        if not self._check_and_handle_running_steam():
+            return
+
+        if self._do_uninstall():
+            if was_running:
+                messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
+            self._launch_steam()
 
     # ==================== 网络更新 ====================
     def check_update(self):
