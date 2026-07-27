@@ -1,0 +1,78 @@
+name: Build and Auto Release
+
+on:
+  push:
+    tags:
+      - "v*" # 当推送形如 v1.0.0, v1.0.1, v2.0 的 Git Tag 时自动触发
+  workflow_dispatch: # 允许在 GitHub Actions 界面手动点击触发测试
+
+# 赋予 GitHub Token 自动创建 Release 和上传文件的权限
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      # 1. 拉取仓库代码 (最新 v4)
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 配置 Python 环境 (最新 v5)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. 安装 PyInstaller (脚本全部使用标准库，无需额外依赖)
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      # 4. 使用 PyInstaller 打包为单文件 EXE
+      # 注意：如果你的主文件名不是 main.py，请将下方末尾的 main.py 替换为你的文件名（如 app.py）
+      - name: Build Executable
+        run: |
+          pyinstaller --noconfirm --onefile --noconsole --name "OpenSteamToolManager" main.py
+
+      # 5. 准备打包发布目录并打成 ZIP 压缩包
+      - name: Compress Release Package
+        shell: powershell
+        run: |
+          # 创建打包临时目录
+          New-Item -ItemType Directory -Path "dist_release"
+          
+          # 复制打包好的 EXE
+          Copy-Item "dist/OpenSteamToolManager.exe" -Destination "dist_release/"
+          
+          # 如果仓库根目录下存在 dlls 文件夹，一并复制；不存在则新建空目录
+          if (Test-Path "dlls") {
+              Copy-Item -Recurse "dlls" -Destination "dist_release/"
+          } else {
+              New-Item -ItemType Directory -Path "dist_release/dlls"
+          }
+          
+          # 获取 Tag 版本名称
+          $tag = "${{ github.ref_name }}"
+          if (-not $tag) { $tag = "latest" }
+          
+          # 拼接 ZIP 文件名
+          $zipName = "OpenSteamTool-$tag-Release.zip"
+          
+          # 打包为 ZIP 压缩包
+          Compress-Archive -Path "dist_release/*" -DestinationPath $zipName
+          
+          # 设置环境变量供后续 Step 读取
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true # 自动根据 Commit 生成版本更新说明
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
