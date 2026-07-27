@@ -31,11 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
 
-      # 4. 使用 PyInstaller 打包为单文件 EXE
-      # 注意：如果你的主文件名不是 main.py，请将下方末尾的 main.py 替换为你的文件名（如 app.py）
+      # 4. 使用 PyInstaller 打包为单文件 EXE (已添加 --icon 与 --add-data 打包图标参数)
       - name: Build Executable
         run: |
-          pyinstaller --noconfirm --onefile --noconsole --name "OpenSteamToolManager" main.py
+          pyinstaller --noconfirm --onefile --noconsole --icon=app.ico --add-data "app.ico;." --name "OpenSteamToolManager" main.py
 
       # 5. 准备打包发布目录并打成 ZIP 压缩包
       - name: Compress Release Package

@@ -13,9 +13,19 @@ import urllib.error
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+# ==================== 0. 静态资源路径兼容辅助 ====================
+def get_resource_path(relative_path: str) -> str:
+    """
+    获取资源文件的绝对路径（兼容源码运行与 PyInstaller --onefile/--onedir 打包环境）
+    """
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+
 # ==================== 1. 全局配置与主题定义 ====================
 TARGET_DLLS = ["OpenSteamTool.dll", "dwmapi.dll", "xinput1_4.dll"]
-GITHUB_API_URL = "https://api.github.com/repos/OpenSteam001/OpenSteamTool/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/OpenSteamTool/OpenSteamTool/releases/latest"
 
 THEME = {
     "bg_app": "#f8f9fa",
@@ -163,7 +173,10 @@ class OpenSteamToolManager:
         self.root.resizable(False, False)
         self.root.configure(bg=THEME["bg_app"])
 
-        # 运行路径定位 (兼容 PyInstaller)
+        # 设置软件窗口与任务栏图标
+        self._set_app_icon()
+
+        # 运行路径定位 (用于 dlls 等外部数据文件夹)
         if getattr(sys, 'frozen', False):
             self.script_dir = os.path.dirname(os.path.abspath(sys.executable))
         else:
@@ -189,6 +202,15 @@ class OpenSteamToolManager:
 
         # 事件驱动：窗口获得焦点时重新检查状态
         self.root.bind("<FocusIn>", lambda e: self.refresh_all_status())
+
+    def _set_app_icon(self):
+        """设置窗口标题栏及任务栏图标"""
+        icon_path = get_resource_path("app.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except Exception:
+                pass
 
     def t(self, key: str, **kwargs) -> str:
         """多语言辅助"""
