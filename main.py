@@ -588,16 +588,23 @@ class OpenSteamToolManager:
 
     def on_btn_b_click(self):
         """部署并启动 / 卸载并启动"""
+        # 记录触发动作前 Steam 是否正在运行
+        was_running = self._is_steam_running()
+
         if not self._check_and_handle_running_steam():
             return
 
         if self.is_installed:
             if self._do_uninstall():
-                messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
+                # 仅在 Steam 原本处于运行状态下才弹框提示
+                if was_running:
+                    messagebox.showinfo(self.t("uninstall_success_title"), self.t("uninstall_launch_msg"))
                 self._launch_steam()
         else:
             if self._do_deploy():
-                messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
+                # 仅在 Steam 原本处于运行状态下才弹框提示
+                if was_running:
+                    messagebox.showinfo(self.t("deploy_success_title"), self.t("deploy_launch_msg"))
                 self._launch_steam()
 
     # ==================== 网络更新 ====================
