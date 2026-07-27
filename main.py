@@ -1,19 +1,8 @@
 import os
 import sys
-import json
-import time
-import shutil
-import zipfile
-import io
-import winreg
 import threading
-import subprocess
-import urllib.request
-import urllib.error
-import locale
-import ctypes
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
 
 # ==================== 0. 静态资源路径与系统语言检测辅助 ====================
 def get_resource_path(relative_path: str) -> str:
@@ -31,6 +20,7 @@ def get_system_language() -> str:
     """
     try:
         if os.name == 'nt':
+            import ctypes
             # 0x0804: zh-CN (简体中文 - 中国)
             # 0x1004: zh-SG (简体中文 - 新加坡)
             lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage()
@@ -40,6 +30,7 @@ def get_system_language() -> str:
         pass
 
     try:
+        import locale
         loc = locale.getdefaultlocale()[0] or locale.getlocale()[0] or ""
         if loc:
             loc_lower = loc.lower().replace("-", "_")
@@ -217,13 +208,16 @@ class OpenSteamToolManager:
         # 构建 UI 界面
         self._build_ui()
 
-        # 读取 Steam 注册表
+        # [性能优化] 关键点：异步延迟加载注册表和初始化磁盘状态，让 Tkinter 窗口能够瞬间绘制上屏
+        self.root.after(1, self._async_post_init)
+
+    def _async_post_init(self):
+        """主窗口显示后，异步调度执行注册表检索与磁盘文件状态更新"""
         steam_path = self._get_steam_path_from_registry()
         if steam_path:
             self.path_var.set(steam_path)
-
-        # 初始状态刷新
-        self.refresh_all_status()
+        else:
+            self.refresh_all_status()
 
         # 事件驱动：窗口获得焦点时重新检查状态
         self.root.bind("<FocusIn>", lambda e: self.refresh_all_status())
@@ -275,6 +269,11 @@ class OpenSteamToolManager:
 
     def _get_steam_path_from_registry(self) -> str:
         """注册表查找 Steam 路径"""
+        try:
+            import winreg
+        except ImportError:
+            return ""
+
         keys = [
             (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"),
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
@@ -294,6 +293,7 @@ class OpenSteamToolManager:
     def _is_steam_running(self) -> bool:
         """检查 steam.exe 是否在后台运行"""
         try:
+            import subprocess
             cmd = ["tasklist", "/FI", "IMAGENAME eq steam.exe"]
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", creationflags=flags)
@@ -304,6 +304,8 @@ class OpenSteamToolManager:
     def _kill_steam(self) -> bool:
         """强制关闭 steam.exe 并等待其退出"""
         try:
+            import subprocess
+            import time
             cmd = ["taskkill", "/F", "/IM", "steam.exe"]
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             subprocess.run(cmd, capture_output=True, creationflags=flags)
@@ -559,6 +561,7 @@ class OpenSteamToolManager:
             return False
 
         try:
+            import shutil
             for dll in TARGET_DLLS:
                 src = os.path.join(self.dlls_dir, dll)
                 dst = os.path.join(steam_dir, dll)
@@ -600,6 +603,7 @@ class OpenSteamToolManager:
         steam_exe = os.path.join(steam_dir, "steam.exe")
         if os.path.isfile(steam_exe):
             try:
+                import subprocess
                 subprocess.Popen([steam_exe], cwd=steam_dir)
             except Exception as e:
                 messagebox.showerror(self.t("err_title"), str(e))
@@ -660,6 +664,10 @@ class OpenSteamToolManager:
         self.lbl_update_status.config(text=self.t("online_version") + self.t("online_checking"))
 
         def _worker():
+            import json
+            import urllib.request
+            import urllib.error
+
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "application/vnd.github.v3+json"
@@ -726,6 +734,12 @@ class OpenSteamToolManager:
         self.lbl_update_status.config(text=f"{prefix}{self.t('downloading')} v{self.latest_version}...")
 
         def _worker():
+            import io
+            import zipfile
+            import shutil
+            import urllib.request
+            import urllib.error
+
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             req = urllib.request.Request(self.latest_download_url, headers=headers)
             try:
